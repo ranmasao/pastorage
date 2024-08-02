@@ -9,6 +9,13 @@ void* aligned_malloc( const size_t size );
 void* aligned_realloc( void* ptr, const size_t oldSize, const size_t newSize );
 void  aligned_free( void* prt, const size_t size );
 
+#if defined(__GNUG__) || defined(__clang__)
+  #define __ffsll __builtin_ffsll
+  #define __ffsl  __buildin_ffsl
+#else
+  #error "Check your compiler and platform for ffsll and/or ffsl implementations"
+#endif
+
 const size_t ELEMENTS_ALIGNMENT = sizeof( void* ); // should be 4 for 32-bit platform or 8 for 64-bit
 static_assert( ( ELEMENTS_ALIGNMENT == 4 || ELEMENTS_ALIGNMENT == 8 ), "Pointer size supposed to be 4 or 8 bytes" );
 const size_t DEFAULT_RAM_PAGE_SIZE = 4096;
@@ -16,17 +23,17 @@ const size_t ELEMENTS_PER_BLOCK = 1024;
 const size_t MAX_TOTAL_ELEMENTS = SIZE_MAX;
 const size_t POINTERS_PER_RAM_PAGE = DEFAULT_RAM_PAGE_SIZE / ELEMENTS_ALIGNMENT;
 #if (__SIZEOF_POINTER__ == __SIZEOF_LONG_LONG__)
-    #define tFlagBaseType unsigned long long
-    #define FFS ffsll
-    #define FLAG_EMPTY 0xffffffffffffffffull
-    #define FLAG_FULL 0ull
+  #define tFlagBaseType unsigned long long
+  #define FFS __ffsll
+  #define FLAG_EMPTY 0xffffffffffffffffull
+  #define FLAG_FULL 0ull
 #elif (__SIZEOF_POINTER__ == __SIZEOF_LONG__)
-    #define tFlagBaseType unsigned long
-    #define FFS ffsl
-    #define FLAG_EMPTY 0xfffffffful
-    #define FLAG_FULL 0ul
+  #define tFlagBaseType unsigned long
+  #define FFS __ffsl
+  #define FLAG_EMPTY 0xfffffffful
+  #define FLAG_FULL 0ul
 #else
-    #error "Unsupported pointer size"
+   #error "Unsupported pointer size"
 #endif
 const size_t FLAG_BASE_TYPE_SIZE = sizeof( tFlagBaseType );
 const size_t FLAGS_PER_BASE_ELEMENT = FLAG_BASE_TYPE_SIZE * 8;
@@ -34,11 +41,11 @@ const size_t FLAGS_BASE_ELEMENTS_PER_PAGE = DEFAULT_RAM_PAGE_SIZE / FLAG_BASE_TY
 const size_t FLAGS_PER_PAGE = DEFAULT_RAM_PAGE_SIZE / 8;
 
 template < typename T >
-class cStorage {
+class cPaStorage {
 public:
   class iterator {
   public:
-    iterator( cStorage< T >& cstorage, size_t id ): storageObject( cstorage ), id( id ) {};
+    iterator( cPaStorage< T >& cstorage, size_t id ): storageObject( cstorage ), id( id ) {};
     iterator operator++() {
       ++id;
       return *this;
@@ -53,11 +60,11 @@ public:
       return storageObject[ id ];
     };
   private:
-    cStorage< T >& storageObject;
+    cPaStorage< T >& storageObject;
     size_t id;
   };
 
-  cStorage() {
+  cPaStorage() {
     elementSize = sizeof( T );
     if ( elementSize % ELEMENTS_ALIGNMENT == 0 ) {
       elementSizeAligned = elementSize;
@@ -67,7 +74,7 @@ public:
     blockOfElementsSize = elementSizeAligned * ELEMENTS_PER_BLOCK;
   };
 
-  ~cStorage() {
+  ~cPaStorage() {
     if ( blocks != nullptr ) {
       for ( size_t i = 0; i < usedBlocksPtrs; i++ ) {
         aligned_free( blocks[ i ], blockOfElementsSize );
@@ -101,14 +108,14 @@ public:
   iterator back() { // very questionable
     return iterator( *this, usedElements - 1 );
   };
-  iterator begin() {
+  iterator begin() { // questionable too
     return iterator( *this, 0 );
   };
   iterator end() { // also questionable
     return iterator( *this, usedElements );
   };
 
-  T& operator[]( size_t index ) {
+  T& operator[]( size_t index ) { // still need to decide how to process if the element is not really used
     if ( !IsElementUsed( index ) ) {
       SetElementUsed( index );
     }
